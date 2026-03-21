@@ -1,6 +1,33 @@
-# =============================================================================
-# Setup
-# =============================================================================
+---
+title: "Pandemic Disruptions and Post-COVID Patterns of Antimicrobial Resistance-Associated Infections in Sweden"
+subtitle: "Regional Incidence Patterns for ESBL/CARBA, VRE, and MRSA (2015-2025)"
+author: ""
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    fig_caption: true
+    latex_engine: xelatex
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{float}
+  - \floatplacement{figure}{H}
+  - \floatplacement{table}{H}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.pos = "H"
+)
+
 # Load packages
 library(tidyverse)
 library(knitr)
@@ -10,10 +37,73 @@ library(broom)
 library(sandwich)
 library(lmtest)
 library(pxweb)
+```
 
-# =============================================================================
-# Load data
-# =============================================================================
+# Introduction
+
+This analysis examines the impact of the COVID-19 pandemic on the epidemiology of three major antimicrobial resistance (AMR)-associated infections in Sweden: extended-spectrum beta-lactamase and carbapenemase-producing bacteria (ESBL/CARBA), vancomycin-resistant enterococci (VRE), and methicillin-resistant Staphylococcus aureus (MRSA). Using regional surveillance data from the Swedish Public Health Agency (Folkhälsomyndigheten), we compare incidence patterns across three distinct time periods:
+
+- **Pre-COVID (2015-2019):** Baseline period before pandemic-related disruptions
+- **COVID (2020-2021):** Period of pandemic restrictions including travel limitations and behavioral changes
+- **Post-COVID (2022-2025):** Recovery period following relaxation of restrictions
+
+We employ generalized linear models to estimate incidence rate ratios (IRRs) comparing these periods, providing insight into how pandemic-related disruptions affected the transmission dynamics of these AMR-associated infections.
+
+Throughout, we frame the pandemic period as a **system-wide disruption** (affecting transmission, care-seeking, testing, and reporting) rather than a single causal exposure, and interpret changes as reflecting the combined influence of these mechanisms.
+
+# Methods
+
+## Data Sources
+
+Annual regional case counts and incidence rates (per 100,000 population) for ESBL/CARBA, VRE, and MRSA were obtained from the Swedish Public Health Agency's national notifiable disease surveillance system (SmiNet) for the period 2015-2025 across all 21 Swedish counties. Population denominators were retrieved from Statistics Sweden (SCB) via the PxWeb API. For 2015-2024, annual county populations were obtained from SCB table `BefolkningNy` (contents `Folkmängd`) using **total age** and aggregated across sex and civil status to obtain total population. For 2025, annual population was not yet available in `BefolkningNy`; therefore, county population for 2025 was taken from SCB's monthly table `BefolkManadCKM` using the latest available month in 2025 at time of analysis and using **total age** and **both sexes combined**.
+
+## Statistical Analysis
+
+For each pathogen, we fitted negative binomial regression models with **case counts** as the outcome, including **log-population as an offset** to model incidence rates, and adjusting for **region (fixed effects)**. To account for within-county temporal dependence (repeated observations of the same county over time), all standard errors, 95% confidence intervals, and p-values were computed using **cluster-robust (sandwich) standard errors** clustered at the county level (HC1 variant; `sandwich::vcovCL`). The COVID period (Pre-COVID, COVID, Post-COVID) was the primary exposure variable. Incidence rate ratios (IRRs) with 95% confidence intervals were calculated comparing:
+
+1. COVID period vs. Pre-COVID (reference)
+2. Post-COVID period vs. Pre-COVID (reference)
+3. Post-COVID period vs. COVID (reference)
+
+As a secondary analysis, we fitted an **interrupted time-series (ITS)** negative binomial model to annual county-level case counts (with log-population offset and region fixed effects), parameterizing the COVID-era disruptions as changes in **level** and **slope** at two interruption points (2020 and 2022). We use this model to visualize fitted trajectories and a counterfactual "no interruptions" trajectory representing continuation of the pre-2020 trend.
+
+### Model formulas
+
+For the period-based regression, we modeled the expected case count \(\mu_{ij}\) in region \(i\) and year \(j\) as:
+
+$$\log(\mu_{ij}) = \log(P_{ij}) + \beta_0 + \beta_1 \cdot \mathbb{1}(\text{period}_j=\text{COVID}) + \beta_2 \cdot \mathbb{1}(\text{period}_j=\text{PostCOVID}) + \gamma_i$$
+
+Equivalently, as a log-incidence model:
+
+$$\log\left(\frac{\mu_{ij}}{P_{ij}}\right) = \beta_0 + \beta_1 \cdot \mathbb{1}(\text{period}_j=\text{COVID}) + \beta_2 \cdot \mathbb{1}(\text{period}_j=\text{PostCOVID}) + \gamma_i$$
+
+Where:
+
+- \(Y_{ij} \sim \text{NegBin}(\mu_{ij}, \theta)\) = case count in region \(i\) and year \(j\)
+- \(P_{ij}\) = population in region \(i\) and year \(j\) (offset term)
+- \(\gamma_i\) = region fixed effect
+- \(\theta\) = dispersion parameter
+
+Incidence rate ratios (IRRs) are obtained by exponentiating coefficients:
+
+$$\text{IRR} = e^{\beta}$$
+
+Statistical significance was assessed at \(\alpha = 0.05\).
+
+For the ITS model, we parameterized time as \(t_j = \text{year}_j - 2015\), with step and slope terms at 2020 and 2022:
+
+$$\text{covid\_step}_j=\mathbb{1}(\text{year}_j \ge 2020), \quad \text{covid\_slope}_j=\max(0, \text{year}_j - 2020)$$
+$$\text{post\_step}_j=\mathbb{1}(\text{year}_j \ge 2022), \quad \text{post\_slope}_j=\max(0, \text{year}_j - 2022)$$
+
+The ITS negative binomial model was:
+
+$$\log(\mu_{ij}) = \log(P_{ij}) + \beta_0 + \beta_t t_j + \beta_{cs}\text{covid\_step}_j + \beta_{csl}\text{covid\_slope}_j + \beta_{ps}\text{post\_step}_j + \beta_{psl}\text{post\_slope}_j + \gamma_i$$
+
+The "no interruptions" counterfactual shown in the figures corresponds to setting the interruption terms to zero (i.e., \(\text{covid\_step}_j=\text{covid\_slope}_j=\text{post\_step}_j=\text{post\_slope}_j=0\) for all \(j\)), yielding a continuation of the pre-2020 trend.
+
+All analyses were performed in R version `r getRversion()`.
+
+```{r load-data}
 # nolint start
 # Load the dataset
 dat <- read_csv("AMR_Associated_Infections.csv", show_col_types = FALSE) %>%
@@ -304,10 +394,15 @@ if (nrow(missing_pop) > 0) {
   stop("Missing SCB population after join for: ", paste0(missing_pop$region, " ", missing_pop$year, collapse = ", "))
 }
 # nolint end
+```
 
-# =============================================================================
-# Summary table (by pathogen and period)
-# =============================================================================
+# Results
+
+## Descriptive Statistics
+
+### Overall Case Counts by Period
+
+```{r summary-table}
 # Summary statistics by pathogen and period
 # First compute national annual totals, then summarize by period
 national_annual <- dat_long %>%
@@ -339,10 +434,11 @@ summary_stats %>%
     font_size = 10
   ) %>%
   collapse_rows(columns = 1, valign = "middle")
+```
 
-# =============================================================================
-# National trends (by year)
-# =============================================================================
+### National Totals by Year
+
+```{r national-trends}
 national_trends <- dat_long %>%
   group_by(pathogen, year) %>%
   summarise(
@@ -384,14 +480,23 @@ national_trends %>%
     font_size = 9
   ) %>%
   add_header_above(c(" " = 1, "ESBL/CARBA" = 2, "VRE" = 2, "MRSA" = 2))
+```
 
-# =============================================================================
-# Regression models (period-based IRR)
-# =============================================================================
+## Regression Analysis
+
+### Model Specification
+
+Model equations and definitions are provided in the Methods section (Statistical Analysis).
+
+### Incidence Rate Ratios
+
+We fitted log-linear regression models for each pathogen to estimate the change in incidence rates between periods, adjusting for regional variation.
+
+```{r regression-models}
 # nolint start
 # Function to fit Negative Binomial model with population offset, adjusted for region
 fit_irr_model <- function(data, pathogen_name, ref_period = "Pre-COVID") {
-
+  
   pathogen_data <- data %>%
     filter(pathogen == pathogen_name) %>%
     filter(!is.na(cases), cases >= 0, !is.na(population), population > 0) %>%
@@ -399,7 +504,7 @@ fit_irr_model <- function(data, pathogen_name, ref_period = "Pre-COVID") {
       period = relevel(period, ref = ref_period),
       log_pop = log(population)
     )
-
+  
   model <- MASS::glm.nb(cases ~ period + region + offset(log_pop), data = pathogen_data)
 
   # Cluster-robust SEs (clustered by region) via sandwich::vcovCL
@@ -430,7 +535,7 @@ fit_irr_model <- function(data, pathogen_name, ref_period = "Pre-COVID") {
     ) %>%
     filter(!is.na(comparison)) %>%
     dplyr::select(pathogen, comparison, IRR, IRR_lower, IRR_upper, p.value)
-
+  
   return(coefs)
 }
 
@@ -453,10 +558,9 @@ irr_covid_ref <- bind_rows(
 all_irr <- bind_rows(irr_results, irr_covid_ref) %>%
   arrange(pathogen, comparison)
 # nolint end
+```
 
-# =============================================================================
-# IRR table (formatted)
-# =============================================================================
+```{r irr-table}
 all_irr %>%
   mutate(
     IRR_formatted = sprintf("%.2f", IRR),
@@ -489,10 +593,18 @@ all_irr %>%
     general_title = "Note: ",
     footnote_as_chunk = TRUE
   )
+```
 
-# =============================================================================
-# Interrupted time-series (ITS) models
-# =============================================================================
+## Interrupted time-series (ITS) model (secondary analysis)
+
+To better align the model with the study question (a disruption during 2020-2021 and a potential rebound after 2022) and with temporal patterns, we additionally fitted an **interrupted time-series (ITS)** negative binomial model with:
+
+- A baseline time trend (year),
+- A COVID interruption at 2020 (step + slope change),
+- A post-COVID interruption at 2022 (step + slope change),
+- Region fixed effects and a population offset.
+
+```{r its-models}
 # nolint start
 dat_its <- dat_long %>%
   mutate(
@@ -582,10 +694,9 @@ aic_tbl <- tibble::tibble(
     `AIC (ITS model)` = round(`AIC (ITS model)`, 1)
   )
 # nolint end
+```
 
-# =============================================================================
-# ITS effects table (formatted)
-# =============================================================================
+```{r its-table}
 its_effects %>%
   mutate(
     IRR_formatted = sprintf("%.2f", IRR),
@@ -613,10 +724,9 @@ its_effects %>%
     font_size = 10
   ) %>%
   collapse_rows(columns = 1, valign = "middle")
+```
 
-# =============================================================================
-# AIC comparison (period vs ITS)
-# =============================================================================
+```{r its-aic-table}
 aic_tbl %>%
   kable(
     caption = "Model fit comparison by AIC (lower is better)",
@@ -627,17 +737,20 @@ aic_tbl %>%
     latex_options = c("hold_position", "striped"),
     font_size = 10
   )
+```
 
-# =============================================================================
-# Sensitivity analysis: excluding 2025 (period + ITS models)
-# =============================================================================
-# Because the 2025 population denominator is derived from the latest available
-# SCB monthly table (not a finalized annual total), we re-run both models on
-# 2015-2024 only to assess robustness.
+## Sensitivity analysis: excluding 2025
 
+Because the 2025 population denominator is derived from the latest available SCB monthly table (not a finalized annual total), we re-run both the period model and the ITS model on the 2015-2024 data only to assess the robustness of results.
+
+```{r sensitivity-data}
 dat_long_no2025 <- dat_long %>% filter(year <= 2024)
+```
 
-# --- Period model (excluding 2025) ---
+### Period model (2015-2024)
+
+```{r sensitivity-period-model}
+# nolint start
 irr_results_no2025 <- bind_rows(
   fit_irr_model(dat_long_no2025, "ESBL/CARBA", "Pre-COVID"),
   fit_irr_model(dat_long_no2025, "VRE", "Pre-COVID"),
@@ -653,8 +766,10 @@ irr_covid_ref_no2025 <- bind_rows(
 
 all_irr_no2025 <- bind_rows(irr_results_no2025, irr_covid_ref_no2025) %>%
   arrange(pathogen, comparison)
+# nolint end
+```
 
-# Formatted table
+```{r sensitivity-irr-table}
 all_irr_no2025 %>%
   mutate(
     IRR_formatted = sprintf("%.2f", IRR),
@@ -682,8 +797,12 @@ all_irr_no2025 %>%
     font_size = 10
   ) %>%
   collapse_rows(columns = 1, valign = "middle")
+```
 
-# --- ITS model (excluding 2025) ---
+### ITS model (2015-2024)
+
+```{r sensitivity-its-model}
+# nolint start
 dat_its_no2025 <- dat_long_no2025 %>%
   mutate(
     log_pop = log(population),
@@ -706,7 +825,27 @@ its_effects_no2025 <- bind_rows(
   its_fits_no2025$MRSA$effects
 )
 
-# Formatted table
+aic_tbl_no2025 <- tibble::tibble(
+  Pathogen = c("ESBL/CARBA", "VRE", "MRSA"),
+  `AIC (Period model)` = c(
+    AIC(fit_period(dat_long_no2025, "ESBL/CARBA")),
+    AIC(fit_period(dat_long_no2025, "VRE")),
+    AIC(fit_period(dat_long_no2025, "MRSA"))
+  ),
+  `AIC (ITS model)` = c(
+    AIC(its_fits_no2025$`ESBL/CARBA`$model),
+    AIC(its_fits_no2025$VRE$model),
+    AIC(its_fits_no2025$MRSA$model)
+  )
+) %>%
+  mutate(
+    `AIC (Period model)` = round(`AIC (Period model)`, 1),
+    `AIC (ITS model)` = round(`AIC (ITS model)`, 1)
+  )
+# nolint end
+```
+
+```{r sensitivity-its-table}
 its_effects_no2025 %>%
   mutate(
     IRR_formatted = sprintf("%.2f", IRR),
@@ -734,26 +873,9 @@ its_effects_no2025 %>%
     font_size = 10
   ) %>%
   collapse_rows(columns = 1, valign = "middle")
+```
 
-# --- AIC comparison (excluding 2025) ---
-aic_tbl_no2025 <- tibble::tibble(
-  Pathogen = c("ESBL/CARBA", "VRE", "MRSA"),
-  `AIC (Period model)` = c(
-    AIC(fit_period(dat_long_no2025, "ESBL/CARBA")),
-    AIC(fit_period(dat_long_no2025, "VRE")),
-    AIC(fit_period(dat_long_no2025, "MRSA"))
-  ),
-  `AIC (ITS model)` = c(
-    AIC(its_fits_no2025$`ESBL/CARBA`$model),
-    AIC(its_fits_no2025$VRE$model),
-    AIC(its_fits_no2025$MRSA$model)
-  )
-) %>%
-  mutate(
-    `AIC (Period model)` = round(`AIC (Period model)`, 1),
-    `AIC (ITS model)` = round(`AIC (ITS model)`, 1)
-  )
-
+```{r sensitivity-aic-table}
 aic_tbl_no2025 %>%
   kable(
     caption = "Sensitivity: AIC comparison excluding 2025 (lower is better)",
@@ -764,22 +886,32 @@ aic_tbl_no2025 %>%
     latex_options = c("hold_position", "striped"),
     font_size = 10
   )
+```
 
-# =============================================================================
-# Counterfactual figures (ITS)
-# =============================================================================
+## Counterfactual trajectories (ITS)
+
+The following figures show national observed incidence versus the fitted ITS trajectory, alongside a counterfactual trajectory. Although the ITS model is fitted to county-level counts (with region fixed effects and a population offset), the plotted trajectories are shown at the national level by aggregating observed and model-predicted county counts and converting to incidence using the corresponding national population.
+
+- **No interruptions:** continuation of the pre-2020 trend.
+
+```{r its-counterfactual-esbl-carba, fig.cap="ESBL/CARBA: National observed vs fitted incidence trajectories with ITS counterfactual. Solid black: observed. Solid blue: fitted ITS. Dashed orange: counterfactual with no interruptions (continuation of pre-2020 trend). Vertical lines mark 2020 and 2022.", out.width="100%"}
 f <- "amr_its_plots/its_observed_fitted_counterfactual_esbl_carba.png"
 if (file.exists(f)) knitr::include_graphics(f)
+```
 
+```{r its-counterfactual-vre, fig.cap="VRE: National observed vs fitted incidence trajectories with ITS counterfactual. Solid black: observed. Solid blue: fitted ITS. Dashed orange: counterfactual with no interruptions (continuation of pre-2020 trend). Vertical lines mark 2020 and 2022.", out.width="100%"}
 f <- "amr_its_plots/its_observed_fitted_counterfactual_vre.png"
 if (file.exists(f)) knitr::include_graphics(f)
+```
 
+```{r its-counterfactual-mrsa, fig.cap="MRSA: National observed vs fitted incidence trajectories with ITS counterfactual. Solid black: observed. Solid blue: fitted ITS. Dashed orange: counterfactual with no interruptions (continuation of pre-2020 trend). Vertical lines mark 2020 and 2022.", out.width="100%"}
 f <- "amr_its_plots/its_observed_fitted_counterfactual_mrsa.png"
 if (file.exists(f)) knitr::include_graphics(f)
+```
 
-# =============================================================================
-# Interpretation (helper and formatted rows for narrative)
-# =============================================================================
+### Interpretation of Results
+
+```{r interpretation, results='asis'}
 # nolint start
 # Helper to pull one row and format IRR + CI + p
 get_row <- function(pathogen_name, comparison_name) {
@@ -810,18 +942,59 @@ mrsa_covid <- get_row("MRSA", "COVID vs Pre-COVID")
 mrsa_post_pre <- get_row("MRSA", "Post-COVID vs Pre-COVID")
 mrsa_post_covid <- get_row("MRSA", "Post-COVID vs COVID")
 # nolint end
+```
 
-# =============================================================================
-# Map figure (pre-generated)
-# =============================================================================
+**ESBL/CARBA (period model):** Incidence during the COVID period was not significantly different from pre-COVID (IRR = `r esbl_covid$irr_txt` `r esbl_covid$ci_txt`, p `r esbl_covid$p_txt`). However, the post-COVID period showed a substantial increase compared with both the COVID period (IRR = `r esbl_post_covid$irr_txt` `r esbl_post_covid$ci_txt`, p `r esbl_post_covid$p_txt`; ~`r esbl_post_covid$pct_txt`% higher than COVID) and pre-COVID levels (IRR = `r esbl_post_pre$irr_txt` `r esbl_post_pre$ci_txt`, p `r esbl_post_pre$p_txt`; ~`r sprintf("%.0f", (esbl_post_pre$IRR - 1) * 100)`% higher than pre-COVID). This pattern suggests a delayed surge in ESBL/CARBA infections following the pandemic period. The ITS model indicates an immediate step decrease at 2020 followed by a significant step increase at 2022, consistent with the period model findings and visualized in the counterfactual trajectories.
+
+**VRE (period model):** We observed a pronounced reduction during COVID versus pre-COVID (IRR = `r vre_covid$irr_txt` `r vre_covid$ci_txt`, p `r vre_covid$p_txt`). Post-COVID incidence rebounded strongly relative to the COVID period (IRR = `r vre_post_covid$irr_txt` `r vre_post_covid$ci_txt`, p `r vre_post_covid$p_txt`; ~`r vre_post_covid$pct_txt`% higher than COVID), but was not significantly different from pre-COVID levels (IRR = `r vre_post_pre$irr_txt` `r vre_post_pre$ci_txt`, p `r vre_post_pre$p_txt`). This pattern suggests substantial disruption during the pandemic period followed by recovery to approximately pre-pandemic baseline. The ITS model shows a large immediate step decrease at 2020, consistent with the period model findings, and is visualized in the counterfactual trajectories.
+
+**MRSA (period model):** COVID-period incidence was substantially lower than pre-COVID (IRR = `r mrsa_covid$irr_txt` `r mrsa_covid$ci_txt`, p `r mrsa_covid$p_txt`). The post-COVID period showed a modest rebound relative to the COVID period (IRR = `r mrsa_post_covid$irr_txt` `r mrsa_post_covid$ci_txt`, p `r mrsa_post_covid$p_txt`; ~`r mrsa_post_covid$pct_txt`% higher than COVID), but incidence remained below pre-COVID levels (IRR = `r mrsa_post_pre$irr_txt` `r mrsa_post_pre$ci_txt`, p `r mrsa_post_pre$p_txt`; ~`r sprintf("%.0f", (mrsa_post_pre$IRR - 1) * 100)`% lower than pre-COVID). This pattern suggests partial recovery but not a return to pre-pandemic baseline. The ITS model shows an immediate step decrease at 2020, but no significant step or slope changes at 2022, indicating a gradual recovery that remains below the counterfactual trajectory (see counterfactual plots).
+
+## Geographic Distribution
+
+Figure 1 shows the regional distribution of mean incidence rates for each pathogen across the three time periods.
+
+```{r map-figure, fig.cap="Mean regional incidence of AMR-associated infections in Sweden by COVID period. Left panels show choropleth maps for ESBL/CARBA (top), VRE (middle), and MRSA (bottom) across Pre-COVID (2015-2019), COVID (2020-2021), and Post-COVID (2022-2025) periods. Right panel shows a reference map of Swedish counties.", out.width="100%"}
 # Include the pre-generated map
 if (file.exists("map_amr_infections_combined.png")) {
   knitr::include_graphics("map_amr_infections_combined.png")
 }
+```
 
-# =============================================================================
-# Appendix: regional summary table
-# =============================================================================
+# Discussion
+
+This analysis reveals substantial disruptions to AMR-associated infection patterns in Sweden during and following the COVID-19 pandemic. The three pathogens showed varying patterns during 2020-2021, likely reflecting:
+
+1. **Changes in healthcare utilization:** Reduced non-urgent healthcare visits may have affected detection and reporting of AMR infections
+2. **Antimicrobial use patterns:** Pandemic-related changes in antibiotic prescribing and hospital infection control practices
+3. **Travel restrictions:** Reduced international travel may have affected importation of resistant strains, particularly for ESBL/CARBA
+4. **Healthcare-associated transmission:** Changes in hospital occupancy and infection prevention measures may have influenced MRSA transmission
+
+The post-COVID recovery patterns differ between pathogens, suggesting pathogen-specific transmission dynamics and varying impacts of pandemic-related disruptions on different AMR-associated infections.
+
+If surveillance artifacts were the sole explanation for the pandemic-era changes, broadly similar patterns would be expected across pathogens; the observed heterogeneity is consistent with pathogen-specific transmission dynamics in addition to surveillance and behavior changes.
+
+## Limitations
+
+- Ecological study design precludes individual-level inference
+- Potential surveillance artifacts during the pandemic period
+- 2025 population denominators were derived from the latest available SCB monthly population table at the time of analysis (not a finalized annual total)
+- Within-county temporal dependence is addressed via cluster-robust standard errors rather than explicit autocorrelation structures (e.g., AR terms); ITS level and slope terms partially capture structured time dependence, but residual autocorrelation may remain
+- AMR surveillance may be influenced by testing practices and laboratory capacity, which may have varied during the pandemic
+
+# Conclusion
+
+The COVID-19 pandemic significantly disrupted the epidemiology of AMR-associated infections in Sweden. While incidence rates showed varying patterns during the pandemic period, recovery patterns in 2022-2025 suggest differential impacts on transmission pathways and surveillance. Continued surveillance will be essential to determine whether pre-pandemic patterns will be fully restored and to monitor the long-term impact of pandemic-related changes on AMR epidemiology.
+
+# References
+
+Swedish Public Health Agency. Disease Statistics (Sjukdomsstatistik). Available at: https://www.folkhalsomyndigheten.se/
+
+\newpage
+
+# Appendix: Regional Incidence Data
+
+```{r appendix-table}
 # Regional summary
 regional_summary <- dat_long %>%
   group_by(region, pathogen, period) %>%
@@ -846,7 +1019,7 @@ regional_summary %>%
     caption = "Mean incidence rates (per 100,000) by region, pathogen, and period",
     booktabs = TRUE,
     align = c("l", rep("r", 9)),
-    col.names = c("Region",
+    col.names = c("Region", 
                   "Pre", "COVID", "Post",
                   "Pre", "COVID", "Post",
                   "Pre", "COVID", "Post")
@@ -856,8 +1029,9 @@ regional_summary %>%
     font_size = 8
   ) %>%
   add_header_above(c(" " = 1, "ESBL/CARBA" = 3, "VRE" = 3, "MRSA" = 3))
+```
 
-# =============================================================================
-# Session info
-# =============================================================================
+```{r session-info, include=FALSE}
 sessionInfo()
+```
+
